@@ -1,7 +1,7 @@
 # Maintainer: Andreas Radke <andyrtr@archlinux.org>
 
 pkgbase=linux-lts
-pkgver=6.6.72
+pkgver=6.12.10
 pkgrel=1
 pkgdesc='LTS Linux'
 url='https://www.kernel.org'
@@ -21,16 +21,19 @@ makedepends=(
   graphviz
   imagemagick
   python-sphinx
+  python-yaml
   texlive-latexextra
 )
-options=('!strip')
+options=(
+  !debug
+  !strip
+)
 _srcname=linux-$pkgver
 _srctag=v$pkgver
 source=(
   https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/${_srcname}.tar.{xz,sign}
   0001-ZEN-Add-sysctl-and-CONFIG-to-disallow-unprivileged-C.patch
-  0002-skip-simpledrm-if-nvidia-drm.modeset=1-is.patch
-  0003-Default-to-maximum-amount-of-ASLR-bits.patch
+  0002-Default-to-maximum-amount-of-ASLR-bits.patch
   config  # the main kernel config file
 )
 validpgpkeys=(
@@ -38,18 +41,16 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
 )
 # https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
-sha256sums=('feb9e514930d5968daa0b8b5486d3295d1fb2b34accf876207641884d4baef39'
+sha256sums=('4a516e5ed748537a73cb42ec47fbbeb6df8b1298e8892c29c0e91de79095b297'
             'SKIP'
-            '21195509fded29d0256abfce947b5a8ce336d0d3e192f3f8ea90bde9dd95a889'
-            '2f23be91455e529d16aa2bbf5f2c7fe3d10812749828fc752240c21b2b845849'
-            '6400a06e6eb3a24b650bc3b1bba9626622f132697987f718e7ed6a5b8c0317bc'
-            'edc98e741c25e3eda366f6e4675e0350efea8630b9f76799c0b9e0abf065cbc0')
-b2sums=('6214a72d784a7b11a3407d5065dc8596c3a15bc0be4401e8fa22c70e268349dcf2a824949d258a6fee276109185b7d5de4ca4eae08cfb39c98ffa98940a10e76'
+            '3cf389ced2b40e6457421cb27892bf126b73032fbf1de895ecc37b13d981a17c'
+            '423b2c6fbc8d6df79997550bef1b1e4f6f402b668007d150013623a83a12b49e'
+            'cb5942f71b16b885b61128f2ab3cd4eacb1c60cf124a2b69fbbe06fea41b5670')
+b2sums=('3146bbc9075b84db4c6ad3a64cbb91e3c379d0b8e9e90029eaf6a5bd37ea2b8a0a4ac1227e73d0e8acd20cab392841e046e148523bdb206302ea6c37a934b451'
         'SKIP'
-        '02a10396c92ab93124139fc3e37b1d4d8654227556d0d11486390da35dfc401ff5784ad86d0d2aa7eacac12bc451aa2ff138749748c7e24deadd040d5404734c'
-        '5dc21a7a6f0b840e6a671dcf09a865e42f0e2c000d5e45d3f3202c02946a8ab2207858d0b2ef1004648b8c2963efb428298b263c8494be806dfc9b6af66d5413'
-        'ba6ebe349b3757411364a9ba2deaa30a8d71a247d518c159385977c2b4782771bda4edfc96bd954808617c9ba984d832471b63c11f5bd6003369bfe4051df31f'
-        'a27355a12e90c6f8c24a2afaadd3d6dfc198504c1ab8536f33dea2b0dfc8b667640694d8229879b898d6a23465ea471239c9686ebd33024c29d51fdf67c8693b')
+        'b2e1f3544470a0ded336a8d9097b879060530d795a9b60ef5d617d16c165f3ca27424529a7c464d249ab72abcaf48d65d66d96508a7b49622ab404739ae0a918'
+        '01f1a8249983b1a52437843ce3566242b3ed1df03fcab98ec092982be9a4dc947ab0f932a6bc9ac84f85248dca479ebe193a6032cfd2b574dc6f5ca31a0190c5'
+        '0b81a5ac96add78d1208918d2a4182f36a7d7a3ff0417ae82267dac033194058d45e2dc819736ae4898fa78e7368574528cf22a7e42f6460376b86303b946b38')
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
 export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
@@ -86,6 +87,7 @@ build() {
   make htmldocs &
   local pid_docs=$!
   make all
+  make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
   wait "${pid_docs}"
 }
 
@@ -143,6 +145,7 @@ _package() {
   optdepends=(
     'wireless-regdb: to set the correct wireless channels of your country'
     'linux-firmware: firmware images needed for some devices'
+    'scx-scheds: to use sched-ext schedulers'
   )
   provides=(
     KSMBD-MODULE
@@ -238,10 +241,11 @@ _package-headers() {
 
   echo "Installing build files..."
   install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map \
-    localversion.* version vmlinux
+    localversion.* version vmlinux tools/bpf/bpftool/vmlinux.h
   install -Dt "$builddir/kernel" -m644 kernel/Makefile
   install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
   cp -t "$builddir" -a scripts
+  ln -srt "$builddir" "$builddir/scripts/gdb/vmlinux-gdb.py"
 
   # required when STACK_VALIDATION is enabled
   install -Dt "$builddir/tools/objtool" tools/objtool/objtool
